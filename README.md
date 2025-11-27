@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=Here is a **clean, professional, plagiarism-safe, human-sounding README.md** tailored for your GitHub repo, including all three `.ino` files and upgrade options.
-You can copy-paste directly into `README.md`.
-
 ---
 
 # **Intelligent Cooling System – ESP32 + DHT11 + Relay + Fan**
@@ -139,6 +135,9 @@ Here are some upgrades that can enhance the system:
 ---
 
 # 📸 **Project Images**
+![Logo](Images/Intelligent%20Cooling%20System.png)
+---
+![Logo](Images/Future_Improvemets.png)
 
 
 ---
