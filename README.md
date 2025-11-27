@@ -148,6 +148,4 @@ This project is open-source.
 You are free to use, modify, and build upon it for personal or academic purposes.
 
 ---
-=======
-# Intelligent-Cooling-System
->>>>>>> 2355e133eb36704dc2da75e8f66cf914838bbcb1
+
