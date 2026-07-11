@@ -1,8 +1,8 @@
 #include <DHT.h>
 
-#define DHTPIN 4        // DHT signal pin connected to GPIO 4
-#define DHTTYPE DHT11   // or DHT22
-#define RELAY_PIN 5     // Relay control pin
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define RELAY_PIN 5
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -12,30 +12,41 @@ void setup() {
   dht.begin();
 
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // relay OFF if active LOW
+
+  // Active LOW relay
+  digitalWrite(RELAY_PIN, HIGH);
+
+  delay(2000);   // Allow DHT to stabilize
 }
 
 void loop() {
-  float temp = dht.readTemperature(); // Celsius
 
-  if (isnan(temp)) {
-    Serial.println("Failed to read from DHT!");
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Failed to read from DHT sensor!");
+    delay(2000);
     return;
   }
 
   Serial.print("Temperature: ");
-  Serial.print(temp);
-  Serial.println(" °C");
+  Serial.print(temperature);
+  Serial.print(" °C");
 
-  // --- Control Fan ---
-  if (temp > 30) {
-    digitalWrite(RELAY_PIN, LOW);   // turn relay ON (active LOW)
+  Serial.print("   Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
+
+  // Relay Control
+  if (temperature >= 30.0) {
+    digitalWrite(RELAY_PIN, LOW);      // Fan ON
     Serial.println("Fan ON");
-  } 
-  else if (temp < 28) {
-    digitalWrite(RELAY_PIN, HIGH);  // turn relay OFF
+  }
+  else if (temperature <= 28.0) {
+    digitalWrite(RELAY_PIN, HIGH);     // Fan OFF
     Serial.println("Fan OFF");
   }
 
-  delay(2000);  // wait 2 sec before next reading
+  delay(2000);
 }
