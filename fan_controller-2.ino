@@ -1,159 +1,225 @@
 /*************************************************
-   Blynk Template Settings
- *************************************************/
+   ESP32 Smart Fan Controller
+   Compatible with:
+   - ESP32 Arduino Core 3.x
+   - Blynk IoT
+   - Adafruit DHT Library
+*************************************************/
+
+/*************** Blynk Settings ******************/
 #define BLYNK_TEMPLATE_ID "TMPL4n3wdaUF0"
 #define BLYNK_TEMPLATE_NAME "ESP32 Fan Controller"
-#define BLYNK_AUTH_TOKEN "DFYMKy3kMRZM7kwXeA9OzhuqoVDhYOky"
+#define BLYNK_AUTH_TOKEN "YOUR_BLYNK_AUTH_TOKEN"
 
-/*************************************************
-   WiFi Credentials
- *************************************************/
-char ssid[] = "SSID";           
-char pass[] = "password";      
+/*************** WiFi Credentials ****************/
+char ssid[] = "YOUR_WIFI_NAME";
+char pass[] = "YOUR_WIFI_PASSWORD";
 
-/*************************************************
-   Includes
- *************************************************/
+/*************** Libraries ***********************/
 #include <WiFi.h>
 #include <BlynkSimpleEsp32.h>
 #include <DHT.h>
 
-/*************************************************
-   Pin Config
- *************************************************/
-#define DHTPIN 4
-#define DHTTYPE DHT11
-
-#define RELAY_PIN 5    
+/*************** Pin Configuration ***************/
+#define DHTPIN      4
+#define DHTTYPE     DHT11
+#define RELAY_PIN   5
 
 DHT dht(DHTPIN, DHTTYPE);
 BlynkTimer timer;
 
-/*************************************************
-   Blynk Virtual Pins
- *************************************************/
-#define V_TEMP     V1
-#define V_HUM      V2
-#define V_MANUAL   V3
-#define V_FEEDBACK V4   
+/*************** Virtual Pins ********************/
+#define V_TEMP      V1
+#define V_HUM       V2
+#define V_MANUAL    V3
+#define V_FEEDBACK  V4
 
-/*************************************************
-   Fan Control Variables
- *************************************************/
+/*************** Temperature Limits **************/
+const float ON_TEMP  = 30.0;
+const float OFF_TEMP = 28.0;
+
+/*************** Variables ***********************/
 bool manualOverride = false;
-int manualState = 0;        
-
-bool fanAutoState = false;
-
-float ON_TEMP = 30.0;     // Auto ON temperature threshold
-float OFF_TEMP = 25.0;    // Auto OFF temperature threshold
+bool fanState = false;
 
 /*************************************************
-   Read Sensors + Automatic Fan Logic
-   - Always prints to Serial
-   - Sends to Blynk only if connected
- *************************************************/
-void sendReadings() {
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
+   Read Sensor & Automatic Fan Control
+*************************************************/
+void sendReadings()
+{
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
 
-  // Serial debug always
-  if (isnan(t) || isnan(h)) {
-    Serial.println("[DHT] Failed to read sensor!");
-  } else {
-    Serial.print("[DHT] Temperature: ");
-    Serial.print(t);
-    Serial.print(" °C  | Humidity: ");
-    Serial.print(h);
-    Serial.println(" %");
-  }
-
-  // Send to Blynk only if connected
-  if (Blynk.connected()) {
-    if (!isnan(t)) Blynk.virtualWrite(V_TEMP, t);
-    if (!isnan(h)) Blynk.virtualWrite(V_HUM, h);
-  } else {
-    Serial.println("[Blynk] Not connected — skipping virtualWrite.");
-  }
-
-  // Automatic control if not overridden
-  if (!manualOverride && !isnan(t)) {
-    if (t > ON_TEMP) {
-      fanAutoState = true;
-    } else if (t < OFF_TEMP) {
-      fanAutoState = false;
+    if (isnan(temperature) || isnan(humidity))
+    {
+        Serial.println("[ERROR] Failed to read DHT11 sensor.");
+        return;
     }
-    digitalWrite(RELAY_PIN, fanAutoState ? LOW : HIGH);
-    // Update feedback only if connected
-    if (Blynk.connected()) Blynk.virtualWrite(V_FEEDBACK, fanAutoState ? 1 : 0);
-    Serial.print("[FAN] Auto mode, fanAutoState=");
-    Serial.println(fanAutoState ? "ON" : "OFF");
-  }
+
+    Serial.print("Temperature : ");
+    Serial.print(temperature);
+    Serial.print(" °C");
+
+    Serial.print("   Humidity : ");
+    Serial.print(humidity);
+    Serial.println(" %");
+
+    // Send values to Blynk if connected
+    if (Blynk.connected())
+    {
+        Blynk.virtualWrite(V_TEMP, temperature);
+        Blynk.virtualWrite(V_HUM, humidity);
+    }
+
+    // Automatic mode
+    if (!manualOverride)
+    {
+        if (temperature >= ON_TEMP)
+        {
+            fanState = true;
+        }
+        else if (temperature <= OFF_TEMP)
+        {
+            fanState = false;
+        }
+
+        digitalWrite(RELAY_PIN, fanState ? LOW : HIGH);
+
+        Serial.print("Fan (AUTO): ");
+        Serial.println(fanState ? "ON" : "OFF");
+
+        if (Blynk.connected())
+        {
+            Blynk.virtualWrite(V_FEEDBACK, fanState);
+        }
+    }
 }
 
 /*************************************************
-   Manual Fan Switch from Blynk (V3)
- *************************************************/
-BLYNK_WRITE(V_MANUAL) {
-  manualState = param.asInt();
-  Serial.print("[BLYNK] Manual V3 value: ");
-  Serial.println(manualState);
+   Manual Fan Control from Blynk
+   V3:
+   0 = OFF
+   1 = ON
+   2 = AUTO
+*************************************************/
+BLYNK_WRITE(V_MANUAL)
+{
+    int value = param.asInt();
 
-  if (manualState == 2) {
-    manualOverride = false;   // Reset to auto mode if you use 3-state button
-    Serial.println("[FAN] Manual override cleared (back to AUTO).");
-    return;
-  }
+    if (value == 2)
+    {
+        manualOverride = false;
+        Serial.println("Switched to AUTO mode");
+        return;
+    }
 
-  manualOverride = true;      // User activated manual control
-  digitalWrite(RELAY_PIN, manualState ? LOW : HIGH);
-  if (Blynk.connected()) Blynk.virtualWrite(V_FEEDBACK, manualState);
-  Serial.print("[FAN] Manual override, fan is now ");
-  Serial.println(manualState ? "ON" : "OFF");
+    manualOverride = true;
+
+    fanState = value;
+
+    digitalWrite(RELAY_PIN, fanState ? LOW : HIGH);
+
+    Serial.print("Fan (MANUAL): ");
+    Serial.println(fanState ? "ON" : "OFF");
+
+    if (Blynk.connected())
+    {
+        Blynk.virtualWrite(V_FEEDBACK, fanState);
+    }
+}
+
+/*************************************************
+   Sync Blynk after reconnect
+*************************************************/
+BLYNK_CONNECTED()
+{
+    Serial.println("Connected to Blynk");
+    Blynk.syncVirtual(V_MANUAL);
 }
 
 /*************************************************
    Setup
- *************************************************/
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("\n--- Booting ESP32 Fan Controller ---");
+*************************************************/
+void setup()
+{
+    Serial.begin(115200);
+    delay(1000);
 
-  dht.begin();
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH);  // Relay OFF at boot
+    Serial.println();
+    Serial.println("==================================");
+    Serial.println(" ESP32 Smart Fan Controller");
+    Serial.println("==================================");
 
-  Serial.print("[WiFi] Connecting to: ");
-  Serial.println(ssid);
+    dht.begin();
+    delay(2000);
 
-  // Use Blynk.begin (blocking) but show debug messages
-  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+    pinMode(RELAY_PIN, OUTPUT);
 
-  // After Blynk.begin returns, show status
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[WiFi] Connected.");
-  } else {
-    Serial.println("[WiFi] Not connected!");
-  }
+    // Relay OFF (Active LOW relay)
+    digitalWrite(RELAY_PIN, HIGH);
 
-  if (Blynk.connected()) {
-    Serial.println("[Blynk] Connected to Blynk Cloud.");
-  } else {
-    Serial.println("[Blynk] NOT connected to Blynk Cloud.");
-  }
+    Serial.println("Connecting to WiFi...");
 
-  // Do one immediate reading so you see Serial output quickly
-  sendReadings();
+    WiFi.begin(ssid, pass);
 
-  // schedule periodic readings
-  timer.setInterval(4000L, sendReadings);
+    unsigned long startAttempt = millis();
+
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - startAttempt < 15000)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("WiFi Connected");
+        Serial.print("IP Address: ");
+        Serial.println(WiFi.localIP());
+
+        Blynk.config(BLYNK_AUTH_TOKEN);
+        Blynk.connect(5000);
+    }
+    else
+    {
+        Serial.println("WiFi connection failed.");
+        Serial.println("Running in OFFLINE automatic mode.");
+    }
+
+    sendReadings();
+
+    timer.setInterval(4000L, sendReadings);
 }
 
 /*************************************************
    Loop
- *************************************************/
-void loop() {
-  Blynk.run();
-  timer.run();
+*************************************************/
+void loop()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        static unsigned long lastReconnect = 0;
+
+        if (millis() - lastReconnect > 10000)
+        {
+            lastReconnect = millis();
+
+            Serial.println("Reconnecting WiFi...");
+            WiFi.disconnect();
+            WiFi.begin(ssid, pass);
+        }
+    }
+    else
+    {
+        if (!Blynk.connected())
+        {
+            Blynk.connect(1000);
+        }
+
+        Blynk.run();
+    }
+
+    timer.run();
 }
