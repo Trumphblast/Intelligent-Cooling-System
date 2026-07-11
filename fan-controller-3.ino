@@ -6,7 +6,7 @@
 #define BLYNK_AUTH_TOKEN ""
 
 /*************************************************
-   WiFi Credentials  → ADD YOURS HERE
+   WiFi Credentials
  *************************************************/
 char ssid[] = "SSID";
 char pass[] = "Password";
@@ -19,95 +19,124 @@ char pass[] = "Password";
 #include <DHT.h>
 
 /*************************************************
-   Pin Config
+   Pin Configuration
  *************************************************/
 #define DHTPIN 4
 #define DHTTYPE DHT11
 
-#define RELAY_PIN 5     // Relay controlling the fan
+#define RELAY_PIN 5
 
 DHT dht(DHTPIN, DHTTYPE);
 BlynkTimer timer;
 
 /*************************************************
-   Virtual Pins (must match your Blynk Datastreams)
+   Virtual Pins
  *************************************************/
-#define V_TEMP V1
-#define V_HUM  V2
-#define V_MANUAL V3
-#define V_FEEDBACK V4
+#define V_TEMP      V1
+#define V_HUM       V2
+#define V_MANUAL    V3
+#define V_FEEDBACK  V4
 
 /*************************************************
    Fan Control Variables
  *************************************************/
 bool manualOverride = false;
-int manualState = 0;        // 0 = off, 1 = on
+bool fanState = false;
 
-bool fanAutoState = false;  // internal automatic state
-
-float ON_TEMP = 23.0;       // fan turns on above 30°C
-float OFF_TEMP = 20.0;      // fan turns off below 28°C
+const float ON_TEMP = 23.0;     // Fan ON above 23°C
+const float OFF_TEMP = 20.0;    // Fan OFF below 20°C
 
 /*************************************************
-   Read Sensors + Auto Logic
+   Update Relay
  *************************************************/
-void sendReadings() {
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
+void setFan(bool state)
+{
+    fanState = state;
 
-  if (!isnan(t)) Blynk.virtualWrite(V_TEMP, t);
-  if (!isnan(h)) Blynk.virtualWrite(V_HUM, h);
+    // Active LOW relay
+    digitalWrite(RELAY_PIN, state ? LOW : HIGH);
 
-  if (!manualOverride) {
-    // --- AUTOMATIC CONTROL ---
-    if (t > ON_TEMP) {
-      fanAutoState = true;
-    } else if (t < OFF_TEMP) {
-      fanAutoState = false;
-    }
-
-    digitalWrite(RELAY_PIN, fanAutoState ? LOW : HIGH);
-    Blynk.virtualWrite(V_FEEDBACK, fanAutoState ? 1 : 0);
-  }
+    Blynk.virtualWrite(V_FEEDBACK, state);
 }
 
 /*************************************************
-   Manual Fan Control from App (Button on V3)
+   Read Sensors
  *************************************************/
-BLYNK_WRITE(V_MANUAL) {
-  manualState = param.asInt();
+void sendReadings()
+{
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
 
-  if (manualState == 2) {
-    // RESET manual override (use this if you want a 3-state switch)
-    manualOverride = false;
-    return;
-  }
+    if (isnan(temperature) || isnan(humidity))
+    {
+        Serial.println("Failed to read DHT sensor!");
+        return;
+    }
 
-  manualOverride = true; // user is controlling manually
+    Blynk.virtualWrite(V_TEMP, temperature);
+    Blynk.virtualWrite(V_HUM, humidity);
 
-  digitalWrite(RELAY_PIN, manualState ? LOW : HIGH);
-  Blynk.virtualWrite(V_FEEDBACK, manualState);
+    if (!manualOverride)
+    {
+        if (temperature >= ON_TEMP)
+        {
+            setFan(true);
+        }
+        else if (temperature <= OFF_TEMP)
+        {
+            setFan(false);
+        }
+    }
+}
+
+/*************************************************
+   Manual Control
+ *************************************************/
+BLYNK_WRITE(V_MANUAL)
+{
+    int value = param.asInt();
+
+    manualOverride = true;
+
+    if (value)
+        setFan(true);
+    else
+        setFan(false);
+}
+
+/*************************************************
+   Sync after reconnect
+ *************************************************/
+BLYNK_CONNECTED()
+{
+    Blynk.syncVirtual(V_MANUAL);
+    Blynk.virtualWrite(V_FEEDBACK, fanState);
 }
 
 /*************************************************
    Setup
  *************************************************/
-void setup() {
-  Serial.begin(115200);
+void setup()
+{
+    Serial.begin(115200);
 
-  dht.begin();
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH);  // Relay OFF at boot
+    pinMode(RELAY_PIN, OUTPUT);
 
-  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+    // Relay OFF
+    digitalWrite(RELAY_PIN, HIGH);
 
-  timer.setInterval(4000L, sendReadings); // send data every 4s
+    dht.begin();
+
+    Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+    timer.setInterval(4000L, sendReadings);
 }
 
 /*************************************************
-   Loop
+   Main Loop
  *************************************************/
-void loop() {
-  Blynk.run();
-  timer.run();
+void loop()
+{
+    Blynk.run();
+    timer.run();
 }
